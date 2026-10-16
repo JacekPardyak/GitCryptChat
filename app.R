@@ -18,8 +18,11 @@ ui <- fluidPage(
       "Key generation",
       br(),
       h4("Generate cryptographic keys"),
-      p("Generuje pary kluczy dla Alice i Boba."),
-      
+      textInput(
+        "user_id",
+        "User ID",
+        value = "alice"
+      ),
       actionButton(
         "generate_keys",
         "Generate keys",
@@ -35,6 +38,17 @@ ui <- fluidPage(
       "Message encryption",
       br(),
       h4("Encrypt a message"),
+      textInput(
+        "sender_id",
+        "Sender ID",
+        value = "bob"
+      ),
+      
+      textInput(
+        "recipient_id",
+        "Recipient ID",
+        value = "alice"
+      ),
       
       textInput(
         "message_id",
@@ -66,7 +80,19 @@ ui <- fluidPage(
       h4("Decrypt a message"),
       
       textInput(
-        "decrypt_id",
+        "sender_id_dec",
+        "Sender ID",
+        value = "bob"
+      ),
+      
+      textInput(
+        "recipient_id_dec",
+        "Recipient ID",
+        value = "alice"
+      ),
+      
+      textInput(
+        "message_id_dec", 
         "Message ID",
         value = "msg_001"
       ),
@@ -114,43 +140,28 @@ server <- function(input, output, session) {
     
     tryCatch({
       
-      # Alice
-      alice_key <- sodium::keygen()
-      alice_pubkey <- sodium::pubkey(alice_key)
+      # An user
+      user_key <- sodium::keygen()
+      user_pubkey <- sodium::pubkey(user_key)
       
-      # Bob
-      bob_key <- sodium::keygen()
-      bob_pubkey <- sodium::pubkey(bob_key)
-      
-      # Klucze prywatne
+      # Private key
       saveRDS(
-        alice_key,
-        "private/keys/alice_key.rds"
+        user_key,
+        glue::glue("private/keys/{input$user_id}_key.rds")
+      )
+
+      # Public key
+      saveRDS(
+        user_pubkey,
+        glue::glue("public/keys/{input$user_id}_pubkey.rds")
       )
       
-      saveRDS(
-        bob_key,
-        "private/keys/bob_key.rds"
-      )
-      
-      # Klucze publiczne
-      saveRDS(
-        alice_pubkey,
-        "public/keys/alice_pubkey.rds"
-      )
-      
-      saveRDS(
-        bob_pubkey,
-        "public/keys/bob_pubkey.rds"
-      )
-      
+
       key_status(
         paste(
           "Keys generated successfully.",
-          "Alice private key: private/keys/alice_key.rds",
-          "Bob private key: private/keys/bob_key.rds",
-          "Alice public key: public/keys/alice_pubkey.rds",
-          "Bob public key: public/keys/bob_pubkey.rds",
+          glue::glue("{input$user_id}'s private key: private/keys/{input$user_id}_key.rds"),
+          glue::glue("{input$user_id}'s public key: public/keys/{input$user_id}_pubkey.rds"),
           sep = "\n"
         )
       )
@@ -187,17 +198,17 @@ server <- function(input, output, session) {
         stop("Message ID może zawierać tylko litery, cyfry, _ i -.")
       }
       
-      alice_path <- "private/keys/alice_key.rds"
-      bob_pub_path <- "public/keys/bob_pubkey.rds"
+      sender_path <- glue::glue("private/keys/{input$sender_id}_key.rds")
+      recipient_pub_path <- glue::glue("public/keys/{input$recipient_id}_pubkey.rds")
       
-      if (!file.exists(alice_path) ||
-          !file.exists(bob_pub_path)) {
+      if (!file.exists(sender_path) ||
+          !file.exists(recipient_pub_path)) {
         stop("Najpierw wygeneruj klucze w zakładce Key generation.")
       }
       
       # Wczytanie kluczy
-      alice_key <- readRDS(alice_path)
-      bob_pubkey <- readRDS(bob_pub_path)
+      sender_key <- readRDS(sender_path)
+      recipient_pubkey <- readRDS(recipient_pub_path)
       
       # Tekst -> surowe bajty
       msg <- charToRaw(enc2utf8(input$message))
@@ -205,8 +216,8 @@ server <- function(input, output, session) {
       # Szyfrowanie i uwierzytelnianie
       ciphertext <- sodium::auth_encrypt(
         msg,
-        alice_key,
-        bob_pubkey
+        sender_key,
+        recipient_pubkey
       )
       
       # Zapis szyfrogramu
@@ -251,24 +262,31 @@ server <- function(input, output, session) {
     
     tryCatch({
       
-      if (!valid_id(input$decrypt_id)) {
+      if (!valid_id(input$message_id_dec)) {
         stop("Message ID może zawierać tylko litery, cyfry, _ i -.")
       }
       
-      bob_path <- "private/keys/bob_key.rds"
-      alice_pub_path <- "public/keys/alice_pubkey.rds"
+      # Klucz prywatny odbiorcy
+      recipient_key_path <- glue::glue(
+        "private/keys/{input$recipient_id_dec}_key.rds"
+      )
+      
+      # Klucz publiczny nadawcy
+      sender_pubkey_path <- glue::glue(
+        "public/keys/{input$sender_id_dec}_pubkey.rds"
+      )
       
       message_path <- file.path(
         "public/messages",
-        paste0(input$decrypt_id, ".rds")
+        paste0(input$message_id_dec, ".rds")
       )
       
-      if (!file.exists(bob_path)) {
-        stop("Nie znaleziono klucza prywatnego Boba.")
+      if (!file.exists(recipient_key_path)) {
+        stop("Nie znaleziono klucza prywatnego odbiorcy.")
       }
       
-      if (!file.exists(alice_pub_path)) {
-        stop("Nie znaleziono klucza publicznego Alice.")
+      if (!file.exists(sender_pubkey_path)) {
+        stop("Nie znaleziono klucza publicznego nadawcy.")
       }
       
       if (!file.exists(message_path)) {
@@ -276,21 +294,19 @@ server <- function(input, output, session) {
       }
       
       # Wczytanie kluczy i szyfrogramu
-      bob_key <- readRDS(bob_path)
-      alice_pubkey <- readRDS(alice_pub_path)
+      recipient_key <- readRDS(recipient_key_path)
+      sender_pubkey <- readRDS(sender_pubkey_path)
       ciphertext <- readRDS(message_path)
       
       # Odszyfrowanie i weryfikacja nadawcy
       decrypted <- sodium::auth_decrypt(
         ciphertext,
-        bob_key,
-        alice_pubkey
+        recipient_key,
+        sender_pubkey
       )
       
-      decrypted_message(
-        rawToChar(decrypted)
-      )
-      
+      decrypted_message(rawToChar(decrypted))
+
       decrypt_status(
         paste(
           "Decryption and authentication successful.",
