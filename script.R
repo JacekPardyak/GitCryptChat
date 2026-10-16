@@ -67,4 +67,10 @@ ciphertext <- auth_encrypt(msg, alice_key, bob_pubkey)
 out <- auth_decrypt(ciphertext, bob_key, alice_pubkey)
 stopifnot(identical(out, msg))
 
-
+# git synch
+system("git remote -v")
+# Pobierz zmiany z GitHub
+system("git pull")
+system("git add .")
+system('git commit -m "Aktualizacja aplikacji"')
+system("git push")
