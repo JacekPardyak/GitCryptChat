@@ -109,6 +109,35 @@ ui <- fluidPage(
       
       h4("Status"),
       verbatimTextOutput("decrypt_status")
+    ),
+    
+    # TAB 4: GitHub synchronization
+    tabPanel(
+      "Sync with GitHub", 
+      br(),
+      h4("GitHub synchronization"),
+      
+      textInput(
+        "user.name",
+        "User name ",
+        value = "JacekPardyak"
+      ),
+      
+      textInput(
+        "user.email", 
+        "User email",
+        value = "jacek.pardyak@gmail.com"
+      ),
+      
+      actionButton(
+        "sync",
+        "Sync keys&messages",
+        class = "btn-primary"
+      ),
+      
+      br(), br(),
+      h4("Status"),
+      verbatimTextOutput("sync_status")
     )
   )
 )
@@ -119,6 +148,7 @@ server <- function(input, output, session) {
   encrypt_status <- reactiveVal("")
   decrypted_message <- reactiveVal("")
   decrypt_status <- reactiveVal("")
+  sync_status <- reactiveVal("")
   
   # Ograniczenie nazw plików, aby uniknąć ścieżek
   valid_id <- function(x) {
@@ -127,10 +157,17 @@ server <- function(input, output, session) {
       grepl("^[A-Za-z0-9_-]+$", x)
   }
   
+  valid_email <- function(x) {
+    is.character(x) &&
+      length(x) == 1 &&
+      grepl("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", x)
+  }
+  
   output$key_status <- renderText(key_status())
   output$encrypt_status <- renderText(encrypt_status())
   output$decrypted_message <- renderText(decrypted_message())
   output$decrypt_status <- renderText(decrypt_status())
+  output$sync_status <- renderText(sync_status())
   
   # --------------------------------
   # TAB 1: GENEROWANIE KLUCZY
@@ -333,6 +370,54 @@ server <- function(input, output, session) {
       
       showNotification(
         "Decryption failed. Check the keys and message.",
+        type = "error"
+      )
+    })
+  })
+  # --------------------------------
+  # TAB 4: GITHUB
+  # --------------------------------
+  
+  observeEvent(input$sync, {
+    
+    tryCatch({
+      
+      if (!valid_id(input$user.name)) {
+        stop("user.name może zawierać tylko litery, cyfry, _ i -.")
+      }
+      
+      if (!valid_email(input$user.email)) {
+        stop("user.email może zawierać tylko litery, cyfry, _, -, . i @.")
+      }
+      
+      system("git remote -v")
+      system(glue::glue('git config --global user.name "{input$user.name}"'))
+      system(glue::glue('git config --global user.email "{input$user.email}"'))
+      system("git pull")
+      system("git add .")
+      system('git commit -m "Aktualizacja aplikacji"')
+      system("git push")
+     
+      sync_status(
+          "Synchronization successful."
+      )
+      
+      showNotification(
+        "Synchronization successful.",
+        type = "message"
+      )
+      
+    }, error = function(e) {
+      
+      sync_status(
+        paste(
+          "Synchronization failed:",
+          conditionMessage(e)
+        )
+      )
+      
+      showNotification(
+        "Synchronization failed. Check GITHUB configuration.",
         type = "error"
       )
     })

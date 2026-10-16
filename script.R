@@ -78,3 +78,9 @@ system("git pull")
 system("git add .")
 system('git commit -m "Aktualizacja aplikacji"')
 system("git push")
+
+
+user.name <- "JacekPardyak"
+glue::glue('git config --global user.name "{user.name}"')
+
+
