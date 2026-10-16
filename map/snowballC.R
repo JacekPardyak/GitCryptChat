@@ -1,5 +1,0 @@
-library(SnowballC)
-ss
-
-getStemLanguages()
-
