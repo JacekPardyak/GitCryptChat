@@ -69,6 +69,10 @@ stopifnot(identical(out, msg))
 
 # git synch
 system("git remote -v")
+# config
+system('git config --global user.name "JacekPardyak"')
+system('git config --global user.email "jacek.pardyak@gmail.com"')
+
 # Pobierz zmiany z GitHub
 system("git pull")
 system("git add .")
