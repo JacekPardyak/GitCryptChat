@@ -1,24 +1,14 @@
 library(sodium)
 
-## Key generation
-# An user
+## Tab 1 - Key generation
 user_id <- "jac"
 user_key <- sodium::keygen()
 user_pubkey <- sodium::pubkey(user_key)
 
-# Private key
-writeBin(
-  user_key,
-  glue::glue("private/keys/{user_id}_key.bin")
-)
+writeBin(user_key, glue::glue("private/keys/{user_id}_key.bin"))
+writeBin(user_pubkey, glue::glue("public/keys/{user_id}_pubkey.bin"))
 
-# Public key
-writeBin(
-  user_pubkey,
-  glue::glue("public/keys/{user_id}_pubkey.bin")
-)
-
-## Message encryption
+## Tab 2 - Message encryption
 sender_id <- "vito"
 recipient_id <- "jac"
 message <- "Ala ma kota \n zażółć gęślą jaźń"
@@ -42,7 +32,7 @@ nonce <- attr(ciphertext, "nonce")
 nonce_path <- glue::glue("public/messages/{message_id}_nonce.bin")
 writeBin(as.raw(nonce), nonce_path)
 
-## Message decryption
+## Tab 3 - Message decryption
 sender_id <- "vito"
 recipient_id <- "jac"
 message_id <- "msg_001"
@@ -65,7 +55,7 @@ decrypted <- sodium::auth_decrypt(
 )
 rawToChar(decrypted)
 
-## Tab 4 github synchronization
+## Tab 4 - Github synchronization
 user.name <- "John Doe"
 user.email <- "john.doe@mail.com"
   

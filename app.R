@@ -1,427 +1,791 @@
 
 library(shiny)
 library(sodium)
+library(glue)
 
-# Katalogi aplikacji
-dir.create("private/keys", recursive = TRUE, showWarnings = FALSE)
-dir.create("public/keys", recursive = TRUE, showWarnings = FALSE)
-dir.create("public/messages", recursive = TRUE, showWarnings = FALSE)
+# ============================================================
+# Konfiguracja i katalogi
+# ============================================================
+
+private_keys_dir <- "private/keys"
+public_keys_dir  <- "public/keys"
+messages_dir     <- "public/messages"
+
+dir.create(private_keys_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(public_keys_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(messages_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Akceptujemy tylko bezpieczne identyfikatory plików.
+valid_id <- function(x) {
+  is.character(x) &&
+    length(x) == 1L &&
+    !is.na(x) &&
+    grepl("^[A-Za-z0-9_-]{1,64}$", x)
+}
+
+read_raw_file <- function(path) {
+  if (!file.exists(path)) {
+    stop("Nie znaleziono pliku: ", path, call. = FALSE)
+  }
+  
+  size <- file.info(path)$size
+  
+  if (is.na(size) || size <= 0) {
+    stop("Plik jest pusty lub nie można go odczytać: ",
+         path, call. = FALSE)
+  }
+  
+  readBin(path, what = "raw", n = size)
+}
+
+list_users <- function(kind = c("public", "private")) {
+  kind <- match.arg(kind)
+  
+  folder <- if (kind == "public") {
+    public_keys_dir
+  } else {
+    private_keys_dir
+  }
+  
+  suffix <- if (kind == "public") "_pubkey.bin$" else "_key.bin$"
+  files <- list.files(folder, pattern = suffix, full.names = FALSE)
+  
+  sub(suffix, "", files)
+}
+
+list_messages <- function() {
+  files <- list.files(
+    messages_dir,
+    pattern = "^[A-Za-z0-9_-]+\\.bin$",
+    full.names = FALSE
+  )
+  
+  sub("\\.bin$", "", files)
+}
+
+# ============================================================
+# Interfejs użytkownika
+# ============================================================
 
 ui <- fluidPage(
-  titlePanel("Sodium Messenger"),
+  titlePanel("Secure Messenger — szyfrowanie wiadomości"),
+  
+  tags$head(
+    tags$style(HTML("
+      .section-panel {
+        padding: 18px;
+        margin-top: 15px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+      }
+      .hint {
+        color: #666;
+        margin-top: 8px;
+      }
+      textarea {
+        font-family: monospace;
+      }
+    "))
+  ),
   
   tabsetPanel(
-    id = "tabs",
+    id = "main_tabs",
     
-    # TAB 1: GENEROWANIE KLUCZY
+    # --------------------------------------------------------
+    # TAB 1: Generowanie kluczy
+    # --------------------------------------------------------
     tabPanel(
-      "Key generation",
-      br(),
-      h4("Generate cryptographic keys"),
-      textInput(
-        "user_id",
-        "User ID",
-        value = "alice"
-      ),
-      actionButton(
-        "generate_keys",
-        "Generate keys",
-        class = "btn-primary"
-      ),
+      title = "1. Generowanie kluczy",
       
-      br(), br(),
-      verbatimTextOutput("key_status")
+      div(
+        class = "section-panel",
+        
+        h3("Generowanie pary kluczy"),
+        
+        p(
+          "Każdy użytkownik posiada klucz prywatny oraz odpowiadający ",
+          "mu klucz publiczny."
+        ),
+        
+        textInput(
+          "key_user_id",
+          "Identyfikator użytkownika",
+          value = "jac",
+          placeholder = "np. jac"
+        ),
+        
+        actionButton(
+          "generate_keys",
+          "Wygeneruj klucze",
+          class = "btn-primary"
+        ),
+        
+        br(), br(),
+        verbatimTextOutput("key_result"),
+        
+        hr(),
+        h4("Zarejestrowani użytkownicy"),
+        actionButton("refresh_users", "Odśwież listę"),
+        tableOutput("users_table")
+      )
     ),
     
-    # TAB 2: SZYFROWANIE
+    # --------------------------------------------------------
+    # TAB 2: Szyfrowanie
+    # --------------------------------------------------------
     tabPanel(
-      "Message encryption",
-      br(),
-      h4("Encrypt a message"),
-      textInput(
-        "sender_id",
-        "Sender ID",
-        value = "bob"
-      ),
+      title = "2. Szyfrowanie",
       
-      textInput(
-        "recipient_id",
-        "Recipient ID",
-        value = "alice"
-      ),
-      
-      textInput(
-        "message_id",
-        "Message ID",
-        value = "msg_001"
-      ),
-      
-      textAreaInput(
-        "message",
-        "Message",
-        value = "Tajna wiadomość dla Boba od Alice",
-        rows = 5
-      ),
-      
-      actionButton(
-        "encrypt",
-        "Encrypt message",
-        class = "btn-primary"
-      ),
-      
-      br(), br(),
-      verbatimTextOutput("encrypt_status")
+      div(
+        class = "section-panel",
+        
+        h3("Szyfrowanie wiadomości"),
+        
+        selectizeInput(
+          "enc_sender",
+          "Nadawca — klucz prywatny",
+          choices = list_users("private"),
+          options = list(placeholder = "Wybierz nadawcę")
+        ),
+        
+        selectizeInput(
+          "enc_recipient",
+          "Odbiorca — klucz publiczny",
+          choices = list_users("public"),
+          options = list(placeholder = "Wybierz odbiorcę")
+        ),
+        
+        textInput(
+          "enc_message_id",
+          "Identyfikator wiadomości",
+          value = "msg_001"
+        ),
+        
+        textAreaInput(
+          "enc_message",
+          "Treść wiadomości",
+          value = "Ala ma kota\nzażółć gęślą jaźń",
+          rows = 6,
+          width = "100%"
+        ),
+        
+        actionButton(
+          "encrypt_message",
+          "Zaszyfruj wiadomość",
+          class = "btn-primary"
+        ),
+        
+        br(), br(),
+        verbatimTextOutput("encrypt_result")
+      )
     ),
     
-    # TAB 3: ODSZYFROWYWANIE
+    # --------------------------------------------------------
+    # TAB 3: Odszyfrowywanie
+    # --------------------------------------------------------
     tabPanel(
-      "Message decryption",
-      br(),
-      h4("Decrypt a message"),
+      title = "3. Odszyfrowywanie",
       
-      textInput(
-        "sender_id_dec",
-        "Sender ID",
-        value = "bob"
-      ),
-      
-      textInput(
-        "recipient_id_dec",
-        "Recipient ID",
-        value = "alice"
-      ),
-      
-      textInput(
-        "message_id_dec", 
-        "Message ID",
-        value = "msg_001"
-      ),
-      
-      actionButton(
-        "decrypt",
-        "Decrypt message",
-        class = "btn-primary"
-      ),
-      
-      br(), br(),
-      h4("Decrypted message"),
-      verbatimTextOutput("decrypted_message"),
-      
-      h4("Status"),
-      verbatimTextOutput("decrypt_status")
+      div(
+        class = "section-panel",
+        
+        h3("Odszyfrowanie wiadomości"),
+        
+        selectizeInput(
+          "dec_sender",
+          "Nadawca — klucz publiczny",
+          choices = list_users("public"),
+          options = list(placeholder = "Wybierz nadawcę")
+        ),
+        
+        selectizeInput(
+          "dec_recipient",
+          "Odbiorca — klucz prywatny",
+          choices = list_users("private"),
+          options = list(placeholder = "Wybierz odbiorcę")
+        ),
+        
+        selectizeInput(
+          "dec_message_id",
+          "Identyfikator wiadomości",
+          choices = list_messages(),
+          options = list(placeholder = "Wybierz wiadomość")
+        ),
+        
+        actionButton(
+          "refresh_messages",
+          "Odśwież wiadomości"
+        ),
+        
+        br(), br(),
+        
+        actionButton(
+          "decrypt_message",
+          "Odszyfruj wiadomość",
+          class = "btn-primary"
+        ),
+        
+        br(), br(),
+        verbatimTextOutput("decrypt_result"),
+        
+        h4("Odszyfrowana treść"),
+        textAreaInput(
+          "decrypted_text",
+          NULL,
+          value = "",
+          rows = 6,
+          width = "100%",
+          placeholder = "Tutaj pojawi się odszyfrowana wiadomość"
+        )
+      )
     ),
     
-    # TAB 4: GitHub synchronization
+    # --------------------------------------------------------
+    # TAB 4: GitHub
+    # --------------------------------------------------------
     tabPanel(
-      "Sync with GitHub", 
-      br(),
-      h4("GitHub synchronization"),
+      title = "4. Synchronizacja Git",
       
-      textInput(
-        "user.name",
-        "User name ",
-        value = "JacekPardyak"
-      ),
-      
-      textInput(
-        "user.email", 
-        "User email",
-        value = "jacek.pardyak@gmail.com"
-      ),
-      
-      actionButton(
-        "sync",
-        "Sync keys&messages",
-        class = "btn-primary"
-      ),
-      
-      br(), br(),
-      h4("Status"),
-      verbatimTextOutput("sync_status")
+      div(
+        class = "section-panel",
+        
+        h3("Synchronizacja repozytorium"),
+        
+        p(
+          "Operacje są wykonywane w katalogu roboczym aplikacji. ",
+          "Przed synchronizacją upewnij się, że repozytorium Git ",
+          "jest skonfigurowane i uwierzytelnione."
+        ),
+        
+        textInput(
+          "git_user_name",
+          "Nazwa użytkownika Git",
+          value = "John Doe"
+        ),
+        
+        textInput(
+          "git_user_email",
+          "Adres e-mail Git",
+          value = "john.doe@mail.com"
+        ),
+        
+        checkboxInput(
+          "git_confirm",
+          "Potwierdzam, że sprawdziłem pliki przeznaczone do publikacji",
+          value = FALSE
+        ),
+        
+        actionButton(
+          "git_status",
+          "Sprawdź status"
+        ),
+        
+        actionButton(
+          "git_sync",
+          "Synchronizuj",
+          class = "btn-primary"
+        ),
+        
+        br(), br(),
+        verbatimTextOutput("git_result"),
+        
+        p(
+          class = "hint",
+          "Synchronizacja obejmuje pliki aplikacji oraz katalog public/. ",
+          "Katalog private/ jest pomijany."
+        )
+      )
     )
   )
 )
 
+# ============================================================
+# Logika serwera
+# ============================================================
+
 server <- function(input, output, session) {
   
-  key_status <- reactiveVal("No keys generated.")
-  encrypt_status <- reactiveVal("")
-  decrypted_message <- reactiveVal("")
-  decrypt_status <- reactiveVal("")
-  sync_status <- reactiveVal("")
+  key_status <- reactiveVal(
+    "Gotowy do generowania kluczy."
+  )
   
-  # Ograniczenie nazw plików, aby uniknąć ścieżek
-  valid_id <- function(x) {
-    is.character(x) &&
-      length(x) == 1 &&
-      grepl("^[A-Za-z0-9_-]+$", x)
+  enc_status <- reactiveVal(
+    "Gotowy do szyfrowania."
+  )
+  
+  dec_status <- reactiveVal(
+    "Gotowy do odszyfrowywania."
+  )
+  
+  git_status_text <- reactiveVal(
+    "Gotowy do synchronizacji."
+  )
+  
+  # ----------------------------------------------------------
+  # Aktualizacja list wyboru
+  # ----------------------------------------------------------
+  
+  refresh_user_choices <- function() {
+    updateSelectizeInput(
+      session, "enc_sender",
+      choices = list_users("private"),
+      server = TRUE
+    )
+    
+    updateSelectizeInput(
+      session, "enc_recipient",
+      choices = list_users("public"),
+      server = TRUE
+    )
+    
+    updateSelectizeInput(
+      session, "dec_sender",
+      choices = list_users("public"),
+      server = TRUE
+    )
+    
+    updateSelectizeInput(
+      session, "dec_recipient",
+      choices = list_users("private"),
+      server = TRUE
+    )
   }
   
-  valid_email <- function(x) {
-    is.character(x) &&
-      length(x) == 1 &&
-      grepl("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$", x)
+  refresh_message_choices <- function() {
+    updateSelectizeInput(
+      session,
+      "dec_message_id",
+      choices = list_messages(),
+      server = TRUE
+    )
   }
   
-  output$key_status <- renderText(key_status())
-  output$encrypt_status <- renderText(encrypt_status())
-  output$decrypted_message <- renderText(decrypted_message())
-  output$decrypt_status <- renderText(decrypt_status())
-  output$sync_status <- renderText(sync_status())
+  observeEvent(input$refresh_users, {
+    refresh_user_choices()
+  })
   
-  # --------------------------------
-  # TAB 1: GENEROWANIE KLUCZY
-  # --------------------------------
+  observeEvent(input$refresh_messages, {
+    refresh_message_choices()
+  })
+  
+  output$users_table <- renderTable({
+    private_users <- list_users("private")
+    public_users <- list_users("public")
+    users <- sort(unique(c(private_users, public_users)))
+    
+    if (length(users) == 0) {
+      return(data.frame(
+        Informacja = "Brak wygenerowanych kluczy."
+      ))
+    }
+    
+    data.frame(
+      Użytkownik = users,
+      `Klucz prywatny` = ifelse(
+        users %in% private_users, "Dostępny lokalnie", "Brak"
+      ),
+      `Klucz publiczny` = ifelse(
+        users %in% public_users, "Dostępny", "Brak"
+      ),
+      check.names = FALSE
+    )
+  }, striped = TRUE, bordered = TRUE, spacing = "s")
+  
+  # ----------------------------------------------------------
+  # TAB 1: Generowanie kluczy
+  # ----------------------------------------------------------
   
   observeEvent(input$generate_keys, {
-    
     tryCatch({
+      user_id <- input$key_user_id
       
-      # An user
+      if (!valid_id(user_id)) {
+        stop(
+          "Identyfikator może zawierać tylko litery ASCII, ",
+          "cyfry, podkreślenia i myślniki (maks. 64 znaki)."
+        )
+      }
+      
+      private_path <- file.path(
+        private_keys_dir,
+        paste0(user_id, "_key.bin")
+      )
+      
+      public_path <- file.path(
+        public_keys_dir,
+        paste0(user_id, "_pubkey.bin")
+      )
+      
+      if (file.exists(private_path) || file.exists(public_path)) {
+        stop(
+          "Klucze dla tego użytkownika już istnieją. ",
+          "Nie nadpisuję istniejących kluczy."
+        )
+      }
+      
       user_key <- sodium::keygen()
       user_pubkey <- sodium::pubkey(user_key)
       
-      # Private key
-      saveRDS(
-        user_key,
-        glue::glue("private/keys/{input$user_id}_key.rds")
-      )
-
-      # Public key
-      saveRDS(
-        user_pubkey,
-        glue::glue("public/keys/{input$user_id}_pubkey.rds")
-      )
+      # Plik tymczasowy pozwala ograniczyć ryzyko pozostawienia
+      # niekompletnego zestawu kluczy.
+      temp_private <- tempfile(tmpdir = private_keys_dir)
+      temp_public <- tempfile(tmpdir = public_keys_dir)
       
-
-      key_status(
-        paste(
-          "Keys generated successfully.",
-          glue::glue("{input$user_id}'s private key: private/keys/{input$user_id}_key.rds"),
-          glue::glue("{input$user_id}'s public key: public/keys/{input$user_id}_pubkey.rds"),
-          sep = "\n"
-        )
-      )
+      on.exit({
+        unlink(c(temp_private, temp_public))
+      }, add = TRUE)
       
-      showNotification(
-        "Key pairs generated successfully.",
-        type = "message"
-      )
+      writeBin(user_key, temp_private)
+      writeBin(user_pubkey, temp_public)
+      
+      if (!file.rename(temp_private, private_path)) {
+        stop("Nie udało się zapisać klucza prywatnego.")
+      }
+      
+      if (!file.rename(temp_public, public_path)) {
+        unlink(private_path)
+        stop("Nie udało się zapisać klucza publicznego.")
+      }
+      
+      Sys.chmod(private_path, mode = "0600")
+      
+      key_status(paste0(
+        "Sukces!\n",
+        "Użytkownik: ", user_id, "\n",
+        "Klucz prywatny: ", private_path, "\n",
+        "Klucz publiczny: ", public_path, "\n\n",
+        "Zachowaj kopię zapasową klucza prywatnego w bezpiecznym miejscu."
+      ))
+      
+      refresh_user_choices()
       
     }, error = function(e) {
-      
-      key_status(
-        paste("Key generation failed:", conditionMessage(e))
-      )
-      
-      showNotification(
-        "Key generation failed.",
-        type = "error"
-      )
+      key_status(paste("Błąd:", conditionMessage(e)))
     })
   })
   
-  # --------------------------------
-  # TAB 2: SZYFROWANIE WIADOMOŚCI
-  # --------------------------------
+  output$key_result <- renderText(key_status())
   
-  observeEvent(input$encrypt, {
-    
+  # ----------------------------------------------------------
+  # TAB 2: Szyfrowanie wiadomości
+  # ----------------------------------------------------------
+  
+  observeEvent(input$encrypt_message, {
     tryCatch({
+      sender_id <- input$enc_sender
+      recipient_id <- input$enc_recipient
+      message_id <- input$enc_message_id
+      message <- input$enc_message
       
-      req(input$message)
-      
-      if (!valid_id(input$message_id)) {
-        stop("Message ID może zawierać tylko litery, cyfry, _ i -.")
+      if (!valid_id(sender_id) ||
+          !valid_id(recipient_id) ||
+          !valid_id(message_id)) {
+        stop("Nieprawidłowy identyfikator nadawcy, odbiorcy lub wiadomości.")
       }
       
-      sender_path <- glue::glue("private/keys/{input$sender_id}_key.rds")
-      recipient_pub_path <- glue::glue("public/keys/{input$recipient_id}_pubkey.rds")
-      
-      if (!file.exists(sender_path) ||
-          !file.exists(recipient_pub_path)) {
-        stop("Najpierw wygeneruj klucze w zakładce Key generation.")
+      if (is.null(message) || !nzchar(message)) {
+        stop("Wiadomość nie może być pusta.")
       }
       
-      # Wczytanie kluczy
-      sender_key <- readRDS(sender_path)
-      recipient_pubkey <- readRDS(recipient_pub_path)
+      sender_key_path <- file.path(
+        private_keys_dir, paste0(sender_id, "_key.bin")
+      )
       
-      # Tekst -> surowe bajty
-      msg <- charToRaw(enc2utf8(input$message))
+      recipient_pubkey_path <- file.path(
+        public_keys_dir, paste0(recipient_id, "_pubkey.bin")
+      )
       
-      # Szyfrowanie i uwierzytelnianie
+      message_path <- file.path(
+        messages_dir, paste0(message_id, ".bin")
+      )
+      
+      nonce_path <- file.path(
+        messages_dir, paste0(message_id, "_nonce.bin")
+      )
+      
+      if (file.exists(message_path) || file.exists(nonce_path)) {
+        stop(
+          "Wiadomość o tym identyfikatorze już istnieje. ",
+          "Wybierz inny identyfikator."
+        )
+      }
+      
+      sender_key <- read_raw_file(sender_key_path)
+      recipient_pubkey <- read_raw_file(recipient_pubkey_path)
+      
+      msg <- charToRaw(enc2utf8(message))
+      
       ciphertext <- sodium::auth_encrypt(
         msg,
         sender_key,
         recipient_pubkey
       )
       
-      # Zapis szyfrogramu
-      out_path <- file.path(
-        "public/messages",
-        paste0(input$message_id, ".rds")
-      )
+      nonce <- attr(ciphertext, "nonce")
       
-      saveRDS(ciphertext, out_path)
+      if (is.null(nonce) || length(nonce) == 0) {
+        stop("Biblioteka sodium nie zwróciła nonce.")
+      }
       
-      encrypt_status(
-        paste(
-          "Encryption successful.",
-          paste("Saved to:", out_path),
-          sep = "\n"
-        )
-      )
+      temp_cipher <- tempfile(tmpdir = messages_dir)
+      temp_nonce <- tempfile(tmpdir = messages_dir)
       
-      showNotification(
-        "Message encrypted and saved.",
-        type = "message"
-      )
+      on.exit(unlink(c(temp_cipher, temp_nonce)), add = TRUE)
+      
+      writeBin(as.raw(ciphertext), temp_cipher)
+      writeBin(as.raw(nonce), temp_nonce)
+      
+      if (!file.rename(temp_cipher, message_path)) {
+        stop("Nie udało się zapisać szyfrogramu.")
+      }
+      
+      if (!file.rename(temp_nonce, nonce_path)) {
+        unlink(message_path)
+        stop("Nie udało się zapisać nonce.")
+      }
+      
+      enc_status(paste0(
+        "Wiadomość zaszyfrowana.\n",
+        "Nadawca: ", sender_id, "\n",
+        "Odbiorca: ", recipient_id, "\n",
+        "Identyfikator: ", message_id, "\n",
+        "Szyfrogram: ", message_path, "\n",
+        "Nonce: ", nonce_path
+      ))
+      
+      refresh_message_choices()
       
     }, error = function(e) {
-      
-      encrypt_status(
-        paste("Encryption failed:", conditionMessage(e))
-      )
-      
-      showNotification(
-        "Encryption failed.",
-        type = "error"
-      )
+      enc_status(paste("Błąd:", conditionMessage(e)))
     })
   })
   
-  # --------------------------------
-  # TAB 3: ODSZYFROWYWANIE WIADOMOŚCI
-  # --------------------------------
+  output$encrypt_result <- renderText(enc_status())
   
-  observeEvent(input$decrypt, {
-    
+  # ----------------------------------------------------------
+  # TAB 3: Odszyfrowywanie wiadomości
+  # ----------------------------------------------------------
+  
+  observeEvent(input$decrypt_message, {
     tryCatch({
+      sender_id <- input$dec_sender
+      recipient_id <- input$dec_recipient
+      message_id <- input$dec_message_id
       
-      if (!valid_id(input$message_id_dec)) {
-        stop("Message ID może zawierać tylko litery, cyfry, _ i -.")
+      if (!valid_id(sender_id) ||
+          !valid_id(recipient_id) ||
+          !valid_id(message_id)) {
+        stop("Wybierz prawidłowego nadawcę, odbiorcę i wiadomość.")
       }
       
-      # Klucz prywatny odbiorcy
-      recipient_key_path <- glue::glue(
-        "private/keys/{input$recipient_id_dec}_key.rds"
+      sender_pubkey_path <- file.path(
+        public_keys_dir, paste0(sender_id, "_pubkey.bin")
       )
       
-      # Klucz publiczny nadawcy
-      sender_pubkey_path <- glue::glue(
-        "public/keys/{input$sender_id_dec}_pubkey.rds"
+      recipient_key_path <- file.path(
+        private_keys_dir, paste0(recipient_id, "_key.bin")
       )
       
       message_path <- file.path(
-        "public/messages",
-        paste0(input$message_id_dec, ".rds")
+        messages_dir, paste0(message_id, ".bin")
       )
       
-      if (!file.exists(recipient_key_path)) {
-        stop("Nie znaleziono klucza prywatnego odbiorcy.")
-      }
+      nonce_path <- file.path(
+        messages_dir, paste0(message_id, "_nonce.bin")
+      )
       
-      if (!file.exists(sender_pubkey_path)) {
-        stop("Nie znaleziono klucza publicznego nadawcy.")
-      }
+      recipient_key <- read_raw_file(recipient_key_path)
+      sender_pubkey <- read_raw_file(sender_pubkey_path)
+      ciphertext <- read_raw_file(message_path)
+      nonce <- read_raw_file(nonce_path)
       
-      if (!file.exists(message_path)) {
-        stop("Nie znaleziono wskazanej wiadomości.")
-      }
-      
-      # Wczytanie kluczy i szyfrogramu
-      recipient_key <- readRDS(recipient_key_path)
-      sender_pubkey <- readRDS(sender_pubkey_path)
-      ciphertext <- readRDS(message_path)
-      
-      # Odszyfrowanie i weryfikacja nadawcy
       decrypted <- sodium::auth_decrypt(
         ciphertext,
         recipient_key,
-        sender_pubkey
+        sender_pubkey,
+        nonce
       )
       
-      decrypted_message(rawToChar(decrypted))
-
-      decrypt_status(
-        paste(
-          "Decryption and authentication successful.",
-          paste("File:", message_path),
-          sep = "\n"
-        )
+      # Konwersja bajtów UTF-8 z zachowaniem polskich znaków.
+      decrypted_text <- rawToChar(decrypted)
+      Encoding(decrypted_text) <- "UTF-8"
+      
+      updateTextAreaInput(
+        session,
+        "decrypted_text",
+        value = decrypted_text
       )
       
-      showNotification(
-        "Message decrypted and authenticated.",
-        type = "message"
-      )
+      dec_status(paste0(
+        "Wiadomość poprawnie odszyfrowana i uwierzytelniona.\n",
+        "Nadawca: ", sender_id, "\n",
+        "Odbiorca: ", recipient_id, "\n",
+        "Identyfikator: ", message_id
+      ))
       
     }, error = function(e) {
-      
-      decrypted_message("")
-      
-      decrypt_status(
-        paste(
-          "Decryption/authentication failed:",
-          conditionMessage(e)
-        )
+      updateTextAreaInput(
+        session, "decrypted_text", value = ""
       )
       
-      showNotification(
-        "Decryption failed. Check the keys and message.",
-        type = "error"
-      )
+      dec_status(paste(
+        "Nie udało się odszyfrować wiadomości:",
+        conditionMessage(e)
+      ))
     })
   })
-  # --------------------------------
-  # TAB 4: GITHUB
-  # --------------------------------
   
-  observeEvent(input$sync, {
+  output$decrypt_result <- renderText(dec_status())
+  
+  # ----------------------------------------------------------
+  # TAB 4: Git
+  # ----------------------------------------------------------
+  
+  # Wszystkie polecenia Git wykonujemy bezpośrednio przez
+  # system2(), bez składania poleceń powłoki z danych formularza.
+  
+  run_git <- function(args) {
+    output_lines <- suppressWarnings(
+      system2(
+        "git",
+        args = args,
+        stdout = TRUE,
+        stderr = TRUE
+      )
+    )
     
+    status <- attr(output_lines, "status")
+    if (is.null(status)) status <- 0L
+    
+    list(
+      status = status,
+      output = paste(output_lines, collapse = "\n")
+    )
+  }
+  
+  observeEvent(input$git_status, {
     tryCatch({
+      result <- run_git(c("status", "--short", "--branch"))
       
-      if (!valid_id(input$user.name)) {
-        stop("user.name może zawierać tylko litery, cyfry, _ i -.")
+      if (result$status != 0) {
+        stop(result$output)
       }
       
-      if (!valid_email(input$user.email)) {
-        stop("user.email może zawierać tylko litery, cyfry, _, -, . i @.")
-      }
-      
-      system("git remote -v")
-      system(glue::glue('git config --global user.name "{input$user.name}"'))
-      system(glue::glue('git config --global user.email "{input$user.email}"'))
-      system("git pull")
-      system("git add .")
-      system('git commit -m "Aktualizacja aplikacji"')
-      system("git push")
-     
-      sync_status(
-          "Synchronization successful."
-      )
-      
-      showNotification(
-        "Synchronization successful.",
-        type = "message"
-      )
+      git_status_text(paste(
+        "Status repozytorium:\n",
+        result$output,
+        sep = ""
+      ))
       
     }, error = function(e) {
-      
-      sync_status(
-        paste(
-          "Synchronization failed:",
-          conditionMessage(e)
-        )
-      )
-      
-      showNotification(
-        "Synchronization failed. Check GITHUB configuration.",
-        type = "error"
-      )
+      git_status_text(paste("Błąd Git:", conditionMessage(e)))
     })
   })
+  
+  observeEvent(input$git_sync, {
+    tryCatch({
+      user_name <- input$git_user_name
+      user_email <- input$git_user_email
+      
+      if (!isTRUE(input$git_confirm)) {
+        stop("Potwierdź, że sprawdziłeś pliki przeznaczone do publikacji.")
+      }
+      
+      if (is.null(user_name) || !nzchar(trimws(user_name)) ||
+          is.null(user_email) || !nzchar(trimws(user_email))) {
+        stop("Podaj nazwę użytkownika Git i adres e-mail.")
+      }
+      
+      if (!grepl("^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$",
+                 user_email)) {
+        stop("Podaj poprawny adres e-mail.")
+      }
+      
+      # Sprawdź, czy katalog roboczy jest repozytorium.
+      result <- run_git(c("rev-parse", "--is-inside-work-tree"))
+      if (result$status != 0) {
+        stop("Bieżący katalog nie jest repozytorium Git.")
+      }
+      
+      # Konfiguracja lokalna repozytorium, nie globalna.
+      for (setting in list(
+        c("user.name", user_name),
+        c("user.email", user_email)
+      )) {
+        result <- run_git(c("config", "--local", setting[1], setting[2]))
+        if (result$status != 0) {
+          stop(result$output)
+        }
+      }
+      
+      # Pobieranie zmian ze zdalnego repozytorium.
+      result <- run_git(c("pull", "--rebase"))
+      if (result$status != 0) {
+        stop(paste("git pull --rebase nie powiódł się:", result$output))
+      }
+      
+      # Dodajemy wyłącznie jawnie wskazane, publikowalne pliki.
+      # Nigdy nie wykonujemy tutaj git add .
+      result <- run_git(c(
+        "add", "--",
+        "app.R",
+        ".gitignore",
+        "public/keys",
+        "public/messages"
+      ))
+      
+      if (result$status != 0) {
+        stop(result$output)
+      }
+      
+      # Sprawdź, czy jest co commitować.
+      result <- run_git(c("diff", "--cached", "--quiet"))
+      
+      if (result$status == 0) {
+        git_status_text(paste(
+          "Synchronizacja zakończona.",
+          "Brak nowych zmian do zatwierdzenia.",
+          sep = "\n"
+        ))
+        return()
+      }
+      
+      if (result$status != 1) {
+        stop("Nie udało się sprawdzić zmian w indeksie Git.")
+      }
+      
+      result <- run_git(c(
+        "commit", "-m", "Aktualizacja aplikacji"
+      ))
+      
+      if (result$status != 0) {
+        stop(paste("Commit nie powiódł się:", result$output))
+      }
+      
+      result <- run_git(c("push"))
+      
+      if (result$status != 0) {
+        stop(paste(
+          "Commit został utworzony, ale push się nie powiódł:",
+          result$output
+        ))
+      }
+      
+      git_status_text(paste(
+        "Synchronizacja zakończona pomyślnie.",
+        result$output,
+        sep = "\n"
+      ))
+      
+    }, error = function(e) {
+      git_status_text(paste(
+        "Błąd synchronizacji:",
+        conditionMessage(e)
+      ))
+    })
+  })
+  
+  output$git_result <- renderText(git_status_text())
 }
 
 shinyApp(ui = ui, server = server)
