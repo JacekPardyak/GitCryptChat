@@ -1,7 +1,7 @@
 library(sodium)
 
 ## Tab 1 - Key generation
-user_id <- "jac"
+user_id <- "vito"
 user_key <- sodium::keygen()
 user_pubkey <- sodium::pubkey(user_key)
 
