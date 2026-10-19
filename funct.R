@@ -1,4 +1,9 @@
 library(sodium)
+dir.create("public/messages", recursive = TRUE, showWarnings = FALSE)
+dir.create("public/keys", recursive = TRUE, showWarnings = FALSE)
+dir.create("private/messages", recursive = TRUE, showWarnings = FALSE)
+dir.create("private/keys", recursive = TRUE, showWarnings = FALSE)
+
 
 ## Tab 1 - Key generation
 user_id <- "bob"
