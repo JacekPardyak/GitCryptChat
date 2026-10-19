@@ -1,9 +1,25 @@
 library(sodium)
+#library(sodex)
+
+# Tab 0 - Initialization
 dir.create("public/messages", recursive = TRUE, showWarnings = FALSE)
 dir.create("public/keys", recursive = TRUE, showWarnings = FALSE)
 dir.create("private/messages", recursive = TRUE, showWarnings = FALSE)
 dir.create("private/keys", recursive = TRUE, showWarnings = FALSE)
 
+gitignore_path <- ".gitignore"
+line_to_add <- "/private/"
+if (!file.exists(gitignore_path)) {
+  file.create(gitignore_path)
+}
+lines <- readLines(gitignore_path, warn = FALSE)
+
+if (!line_to_add %in% lines) {
+  write(line_to_add, file = gitignore_path, append = TRUE)
+  message("Dodano /private/ do .gitignore")
+} else {
+  message("Wpis /private/ już istnieje w .gitignore")
+}
 
 ## Tab 1 - Key generation
 user_id <- "bob"
