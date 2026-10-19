@@ -1,7 +1,7 @@
 library(sodium)
 
 ## Tab 1 - Key generation
-user_id <- "vito"
+user_id <- "bob"
 user_key <- sodium::keygen()
 user_pubkey <- sodium::pubkey(user_key)
 writeBin(user_key, glue::glue("private/keys/{user_id}_key.bin"))
@@ -9,7 +9,7 @@ writeBin(user_pubkey, glue::glue("public/keys/{user_id}_pubkey.bin"))
 
 ## Tab 2 - Message encryption
 sender_id <- "vito"
-recipient_id <- "jac"
+recipient_id <- "bob"
 message <- "Ala ma kota \n zażółć gęślą jaźń"
 message_id <- "msg_001"
 sender_key_path <- glue::glue("private/keys/{sender_id}_key.bin")
@@ -26,7 +26,7 @@ writeBin(as.raw(nonce), nonce_path)
 
 ## Tab 3 - Message decryption
 sender_id <- "vito"
-recipient_id <- "jac"
+recipient_id <- "bob"
 message_id <- "msg_001"
 
 sender_pubkey_path <- glue::glue("public/keys/{sender_id}_pubkey.bin")
@@ -43,7 +43,7 @@ rawToChar(decrypted)
 # Tab 4 - File encryption
 
 sender_id <- "vito"
-recipient_id <- "jac"
+recipient_id <- "bob"
 
 input_file_path <- "private/messages/Untitled.pdf"
 file_id <- "file_001"
@@ -63,7 +63,7 @@ writeBin(as.raw(nonce), nonce_path)
 # Tab 5 - File decryption
 
 sender_id <- "vito"
-recipient_id <- "jac"
+recipient_id <- "bob"
 
 file_id <- "file_001"
 output_file_path <- "private/messages/dokument.pdf"
