@@ -62,7 +62,7 @@ sender_id <- "vito"
 recipient_id <- "jac"
 
 # Ścieżka do dowolnego pliku, który chcesz zaszyfrować
-input_file_path <- "private/messages/Untitled.Rmd"
+input_file_path <- "private/messages/Untitled.pdf"
 
 # Identyfikator zaszyfrowanego pliku
 file_id <- "file_001"
@@ -129,7 +129,7 @@ recipient_id <- "jac"
 file_id <- "file_001"
 
 # Ścieżka, pod którą zostanie odtworzony oryginalny plik
-output_file_path <- "private/messages/dokument.Rmd"
+output_file_path <- "private/messages/dokument.pdf"
 
 # Ścieżki do kluczy
 sender_pubkey_path <- glue::glue(
