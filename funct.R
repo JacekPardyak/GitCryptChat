@@ -45,7 +45,7 @@ rawToChar(decrypted)
 sender_id <- "vito"
 recipient_id <- "bob"
 
-input_file_path <- "private/messages/Untitled.pdf"
+input_file_path <- "private/messages/Untitled.html"
 file_id <- "file_001"
 sender_key_path <- glue::glue("private/keys/{sender_id}_key.bin")
 recipient_pubkey_path <- glue::glue("public/keys/{recipient_id}_pubkey.bin")
@@ -66,7 +66,7 @@ sender_id <- "vito"
 recipient_id <- "bob"
 
 file_id <- "file_001"
-output_file_path <- "private/messages/dokument.pdf"
+output_file_path <- "private/messages/dokument.html"
 sender_pubkey_path <- glue::glue("public/keys/{sender_id}_pubkey.bin")
 recipient_key_path <- glue::glue("private/keys/{recipient_id}_key.bin")
 encrypted_file_path <- glue::glue("public/messages/{file_id}.bin")
